@@ -1,0 +1,88 @@
+<script lang="ts">
+	import { getModalStore, ProgressRadial } from '@skeletonlabs/skeleton';
+	import { confettiAction } from 'svelte-legos';
+	import { chatStore, settingsStore } from '$misc/stores';
+	import { canSuggestTitle, suggestChatTitle, track } from '$misc/shared';
+	import { getProviderForModel } from '$misc/openai';
+
+	const modalStore = getModalStore();
+
+	let slug = $modalStore[0].meta?.slug || '';
+	let isLoading = false;
+
+	let title = $chatStore[slug].title;
+
+	$: showAiSuggestOptions = canSuggestTitle($chatStore[slug]);
+	$: provider = getProviderForModel($chatStore[slug].settings.model);
+
+	async function handleSuggestTitle() {
+		isLoading = true;
+		title = await suggestChatTitle($chatStore[slug]);
+		isLoading = false;
+		track('suggestTitleManually');
+	}
+
+	function handleSave() {
+		chatStore.updateChat(slug, { title });
+
+		if ($modalStore[0].response) {
+			$modalStore[0].response(true);
+		}
+		modalStore.close();
+	}
+</script>
+
+<div class="card variant-filled-surface-700 p-8">
+	<h3 class="h3 mb-4">Name your chat</h3>
+
+	<form class="flex flex-col space-y-4" on:submit|preventDefault={handleSave}>
+		<label class="label">
+			<span class="inline-block w-40">Set chat title</span>
+			<input type="text" class="input" bind:value={title} />
+		</label>
+
+		{#if showAiSuggestOptions}
+			<span class="self-center">OR:</span>
+
+			<button
+				type="button"
+				class="btn variant variant-filled-secondary"
+				disabled={isLoading}
+				use:confettiAction={{ type: 'school-pride' }}
+				on:click={handleSuggestTitle}
+			>
+				{#if !isLoading}
+					Let {provider} suggest a new title
+				{:else}
+					<ProgressRadial
+						class="w-6"
+						stroke={120}
+						meter="stroke-tertiary-500"
+						track="stroke-tertiary-500/30"
+					/>
+				{/if}
+			</button>
+
+			<span class="text-xs text-slate-400">
+				This action will consume a few tokens. The cheap gpt-3.5-turbo model will be used.
+			</span>
+		{/if}
+
+		<div class="flex flex-col md:flex-row space-y-4 md:space-y-0 justify-between items-center">
+			{#if showAiSuggestOptions}
+				<label class="flex items-center space-x-2">
+					<input
+						class="checkbox"
+						type="checkbox"
+						bind:checked={$settingsStore.useTitleSuggestions}
+					/>
+					<p>Always set titles automagically</p>
+				</label>
+			{/if}
+
+			<button type="submit" class="btn variant-filled-primary max-w-[100px] self-end">
+				Save
+			</button>
+		</div>
+	</form>
+</div>
